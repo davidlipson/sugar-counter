@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Days Since</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fdf6f0;
+      font-family: 'Georgia', serif;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 32px;
+      padding: 56px 64px;
+      text-align: center;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.07);
+      max-width: 420px;
+      width: 90%;
+    }
+
+    .label {
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #b0a090;
+      margin-bottom: 12px;
+    }
+
+    .count {
+      font-size: 96px;
+      font-weight: 700;
+      color: #2d1a0e;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .unit {
+      font-size: 22px;
+      color: #7a5c3e;
+      margin-bottom: 4px;
+    }
+
+    .event {
+      font-size: 15px;
+      color: #c0aa90;
+      margin-bottom: 40px;
+      font-style: italic;
+    }
+
+    .reset-btn {
+      background: none;
+      border: 2px solid #e8d8c8;
+      border-radius: 50px;
+      padding: 10px 28px;
+      font-size: 13px;
+      color: #b0a090;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .reset-btn:hover {
+      border-color: #c0a888;
+      color: #7a5c3e;
+    }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.15);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 24px;
+      padding: 40px 44px;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+    }
+
+    .modal h2 {
+      font-size: 18px;
+      color: #2d1a0e;
+      margin-bottom: 8px;
+    }
+
+    .modal p {
+      font-size: 13px;
+      color: #b0a090;
+      margin-bottom: 24px;
+    }
+
+    .modal input {
+      width: 100%;
+      border: 2px solid #e8d8c8;
+      border-radius: 50px;
+      padding: 12px 20px;
+      font-size: 14px;
+      color: #2d1a0e;
+      outline: none;
+      text-align: center;
+      transition: border-color 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .modal input:focus { border-color: #c0a888; }
+    .modal input.error { border-color: #e88888; }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+      border-radius: 50px;
+      padding: 11px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 2px solid #e8d8c8;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel {
+      background: none;
+      color: #b0a090;
+    }
+
+    .btn-cancel:hover { border-color: #c0a888; color: #7a5c3e; }
+
+    .btn-confirm {
+      background: #2d1a0e;
+      color: #fff;
+      border-color: #2d1a0e;
+    }
+
+    .btn-confirm:hover { background: #4a2e1a; border-color: #4a2e1a; }
+
+    .error-msg {
+      font-size: 12px;
+      color: #e88888;
+      margin-top: -8px;
+      margin-bottom: 12px;
+      min-height: 16px;
+    }
+
+    .status-msg {
+      font-size: 12px;
+      color: #b0a090;
+      margin-top: 12px;
+      min-height: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="label">Days since</div>
+  <div class="count" id="count">—</div>
+  <div class="unit">days</div>
+  <div class="event">last sugar event</div>
+  <button class="reset-btn" onclick="openModal()">reset</button>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="closeOnOverlay(event)">
+  <div class="modal">
+    <h2>Reset counter</h2>
+    <p>Enter the password to reset to today.</p>
+    <input
+      type="password"
+      id="password"
+      placeholder="password"
+      onkeydown="if(event.key==='Enter')confirmReset()"
+      autocomplete="off"
+    />
+    <div class="error-msg" id="error-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">cancel</button>
+      <button class="btn-confirm" onclick="confirmReset()">reset</button>
+    </div>
+    <div class="status-msg" id="status-msg"></div>
+  </div>
+</div>
+
+<script>
+  // ── Config ────────────────────────────────────────────────────────────────
+  const REPO_OWNER = 'davidlipson';
+  const REPO_NAME  = 'sugar-counter';
+  const STATE_FILE = 'state.json';
+  // Fine-grained PAT with Contents: Read & Write on this repo only.
+  // Create at: github.com/settings/personal-access-tokens/new
+  // Scopes needed: Repository > Contents (Read and Write)
+  const GITHUB_TOKEN = 'REPLACE_WITH_YOUR_TOKEN';
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${STATE_FILE}`;
+  const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATE_FILE}`;
+
+  let currentSha = null;
+
+  async function loadCount() {
+    try {
+      const res = await fetch(RAW_URL + '?t=' + Date.now());
+      const data = await res.json();
+      const start = new Date(data.lastReset);
+      const now   = new Date();
+      const diff  = Math.floor((now - start) / 86400000);
+      document.getElementById('count').textContent = diff;
+    } catch (e) {
+      document.getElementById('count').textContent = '?';
+    }
+  }
+
+  async function fetchSha() {
+    const res = await fetch(API_URL, {
+      headers: { Authorization: `token ${GITHUB_TOKEN}` }
+    });
+    const data = await res.json();
+    currentSha = data.sha;
+  }
+
+  function openModal() {
+    document.getElementById('modal').classList.add('open');
+    document.getElementById('password').value = '';
+    document.getElementById('error-msg').textContent = '';
+    document.getElementById('status-msg').textContent = '';
+    document.getElementById('password').classList.remove('error');
+    setTimeout(() => document.getElementById('password').focus(), 100);
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+  }
+
+  function closeOnOverlay(e) {
+    if (e.target === document.getElementById('modal')) closeModal();
+  }
+
+  async function confirmReset() {
+    const pw = document.getElementById('password').value;
+    const errorEl = document.getElementById('error-msg');
+    const statusEl = document.getElementById('status-msg');
+
+    if (pw !== 'marsbar') {
+      errorEl.textContent = 'Wrong password.';
+      document.getElementById('password').classList.add('error');
+      return;
+    }
+
+    errorEl.textContent = '';
+    statusEl.textContent = 'Resetting…';
+
+    try {
+      await fetchSha();
+
+      const today = new Date().toISOString().slice(0, 10);
+      const content = btoa(JSON.stringify({ lastReset: today }) + '\n');
+
+      const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: `reset: ${today}`,
+          content,
+          sha: currentSha
+        })
+      });
+
+      if (!res.ok) throw new Error('API error');
+
+      statusEl.textContent = 'Done! Reloading…';
+      setTimeout(() => { closeModal(); loadCount(); }, 1200);
+    } catch (e) {
+      statusEl.textContent = 'Something went wrong.';
+    }
+  }
+
+  loadCount();
+</script>
+
+</body>
+</html>
